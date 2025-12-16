@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>補助金検索 | Jグランツ API</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="background-pattern"></div>
+    
+    <header class="header">
+        <div class="header-content">
+            <h1 class="logo">
+                <span class="logo-icon">📋</span>
+                <span class="logo-text">補助金検索</span>
+            </h1>
+            <p class="subtitle">Jグランツ公開APIを使用した補助金情報検索システム</p>
+        </div>
+    </header>
+
+    <main class="main-container">
+        <!-- 検索フォーム -->
+        <section class="search-section">
+            <div class="search-card">
+                <h2 class="section-title">
+                    <span class="title-icon">🔍</span>
+                    検索条件
+                </h2>
+                
+                <form id="search-form" class="search-form">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="keyword" class="form-label">キーワード</label>
+                            <input 
+                                type="text" 
+                                id="keyword" 
+                                name="keyword" 
+                                class="form-input"
+                                placeholder="補助金名、詳細で検索..."
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label for="target_area" class="form-label">対象地域</label>
+                            <select id="target_area" name="target_area" class="form-select">
+                                <option value="">すべての地域</option>
+                                {% for area in target_areas %}
+                                <option value="{{ area }}">{{ area }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="subsidy_max_limit" class="form-label">補助金上限額（円）</label>
+                            <input 
+                                type="number" 
+                                id="subsidy_max_limit" 
+                                name="subsidy_max_limit" 
+                                class="form-input"
+                                placeholder="例: 1000000"
+                                min="0"
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label for="target_number_of_employees" class="form-label">対象従業員数</label>
+                            <select id="target_number_of_employees" name="target_number_of_employees" class="form-select">
+                                <option value="">すべて</option>
+                                {% for count in employee_counts %}
+                                <option value="{{ count }}">{{ count }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="use_purpose" class="form-label">利用目的</label>
+                            <select id="use_purpose" name="use_purpose" class="form-select">
+                                <option value="">すべて</option>
+                                {% for purpose in use_purposes %}
+                                <option value="{{ purpose }}">{{ purpose }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="form-group checkbox-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="acceptance_only" name="acceptance_only" class="form-checkbox">
+                                <span class="checkbox-text">受付中の補助金のみ表示</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">
+                            <span class="btn-icon">🔎</span>
+                            検索する
+                        </button>
+                        <button type="reset" class="btn btn-secondary">
+                            <span class="btn-icon">↺</span>
+                            リセット
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <!-- 検索結果 -->
+        <section class="results-section">
+            <div class="results-header">
+                <h2 class="section-title">
+                    <span class="title-icon">📊</span>
+                    検索結果
+                </h2>
+                <div id="result-count" class="result-count"></div>
+            </div>
+
+            <div id="loading" class="loading hidden">
+                <div class="loading-spinner"></div>
+                <p>検索中...</p>
+            </div>
+
+            <div id="error-message" class="error-message hidden"></div>
+
+            <div id="results-container" class="results-grid"></div>
+        </section>
+    </main>
+
+    <!-- 詳細モーダル -->
+    <div id="detail-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <button class="modal-close" aria-label="閉じる">&times;</button>
+            <div id="modal-body" class="modal-body"></div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>データ出典: <a href="https://developers.digital.go.jp/documents/jgrants/api/" target="_blank" rel="noopener">デジタル庁 Jグランツ API</a></p>
+    </footer>
+
+    <script>
+        // DOM要素の取得
+        const searchForm = document.getElementById('search-form');
+        const resultsContainer = document.getElementById('results-container');
+        const resultCount = document.getElementById('result-count');
+        const loading = document.getElementById('loading');
+        const errorMessage = document.getElementById('error-message');
+        const detailModal = document.getElementById('detail-modal');
+        const modalBody = document.getElementById('modal-body');
+        const modalClose = document.querySelector('.modal-close');
+        const modalOverlay = document.querySelector('.modal-overlay');
+
+        // 検索フォームの送信処理
+        searchForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            // UIの初期化
+            loading.classList.remove('hidden');
+            errorMessage.classList.add('hidden');
+            resultsContainer.innerHTML = '';
+            resultCount.textContent = '';
+
+            const formData = new FormData(searchForm);
+
+            try {
+                const response = await fetch('/search', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    displayResults(data.subsidies, data.count);
+                } else {
+                    showError(data.error);
+                }
+            } catch (error) {
+                showError('通信エラーが発生しました。しばらくしてから再度お試しください。');
+            } finally {
+                loading.classList.add('hidden');
+            }
+        });
+
+        // 検索結果の表示
+        function displayResults(subsidies, count) {
+            resultCount.textContent = `${count}件の補助金が見つかりました`;
+
+            if (subsidies.length === 0) {
+                resultsContainer.innerHTML = `
+                    <div class="no-results">
+                        <span class="no-results-icon">🔍</span>
+                        <p>条件に一致する補助金が見つかりませんでした。</p>
+                        <p class="no-results-hint">検索条件を変更してお試しください。</p>
+                    </div>
+                `;
+                return;
+            }
+
+            resultsContainer.innerHTML = subsidies.map((subsidy, index) => `
+                <div class="result-card" style="animation-delay: ${index * 0.05}s">
+                    <div class="card-header">
+                        <span class="subsidy-id">${subsidy.name || '-'}</span>
+                        <span class="subsidy-amount">${subsidy.subsidy_max_limit}</span>
+                    </div>
+                    <h3 class="card-title">${subsidy.title || '名称未設定'}</h3>
+                    <div class="card-meta">
+                        <div class="meta-item">
+                            <span class="meta-icon">📍</span>
+                            <span>${subsidy.target_area || '全国'}</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-icon">👥</span>
+                            <span>${subsidy.target_employees || '制限なし'}</span>
+                        </div>
+                    </div>
+                    <div class="card-dates">
+                        <span class="date-label">受付期間:</span>
+                        <span>${formatDate(subsidy.acceptance_start)} ～ ${formatDate(subsidy.acceptance_end)}</span>
+                    </div>
+                    <button class="btn btn-detail" onclick="showDetail('${subsidy.id}')">
+                        詳細を見る
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        // 日付のフォーマット
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            try {
+                const date = new Date(dateStr);
+                return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}`;
+            } catch {
+                return dateStr;
+            }
+        }
+
+        // エラーメッセージの表示
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.remove('hidden');
+        }
+
+        // 詳細モーダルの表示
+        async function showDetail(subsidyId) {
+            modalBody.innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>読み込み中...</p></div>';
+            detailModal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+
+            try {
+                const response = await fetch(`/detail/${subsidyId}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    displayDetail(data.subsidy);
+                } else {
+                    modalBody.innerHTML = `<div class="error-message">${data.error}</div>`;
+                }
+            } catch (error) {
+                modalBody.innerHTML = '<div class="error-message">詳細情報の取得に失敗しました。</div>';
+            }
+        }
+
+        // 詳細情報の表示
+        function displayDetail(subsidy) {
+            modalBody.innerHTML = `
+                <div class="detail-header">
+                    <span class="detail-id">${subsidy.name || '-'}</span>
+                    <h2 class="detail-title">${subsidy.title || '名称未設定'}</h2>
+                    ${subsidy.catch_phrase ? `<p class="detail-catchphrase">${subsidy.catch_phrase}</p>` : ''}
+                </div>
+
+                <div class="detail-section">
+                    <h3 class="detail-section-title">概要</h3>
+                    <p class="detail-text">${subsidy.detail || '詳細情報がありません。'}</p>
+                </div>
+
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <span class="detail-label">補助金上限</span>
+                        <span class="detail-value highlight">${subsidy.subsidy_max_limit}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">補助率</span>
+                        <span class="detail-value">${subsidy.subsidy_rate || '-'}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">対象地域</span>
+                        <span class="detail-value">${subsidy.target_area || '-'}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">地域詳細</span>
+                        <span class="detail-value">${subsidy.target_area_detail || '-'}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">対象従業員数</span>
+                        <span class="detail-value">${subsidy.target_employees || '-'}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">対象業種</span>
+                        <span class="detail-value">${subsidy.industry || '-'}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">利用目的</span>
+                        <span class="detail-value">${subsidy.use_purpose || '-'}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">受付開始</span>
+                        <span class="detail-value">${formatDate(subsidy.acceptance_start)}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">受付終了</span>
+                        <span class="detail-value">${formatDate(subsidy.acceptance_end)}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">事業終了期限</span>
+                        <span class="detail-value">${formatDate(subsidy.project_end_deadline)}</span>
+                    </div>
+                </div>
+
+                ${subsidy.detail_url ? `
+                    <div class="detail-actions">
+                        <a href="${subsidy.detail_url}" target="_blank" rel="noopener" class="btn btn-primary">
+                            <span class="btn-icon">🔗</span>
+                            Jグランツで詳細を見る
+                        </a>
+                    </div>
+                ` : ''}
+            `;
+        }
+
+        // モーダルを閉じる
+        function closeModal() {
+            detailModal.classList.add('hidden');
+            document.body.style.overflow = '';
+        }
+
+        modalClose.addEventListener('click', closeModal);
+        modalOverlay.addEventListener('click', closeModal);
+
+        // ESCキーでモーダルを閉じる
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !detailModal.classList.contains('hidden')) {
+                closeModal();
+            }
+        });
+    </script>
+</body>
+</html>
+
