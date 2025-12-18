@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>補助金検索 | Jグランツ API</title>
+    <title>補助金検索 | Jグランツ API + 補助金ポータル</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,7 +18,7 @@
                 <span class="logo-icon">📋</span>
                 <span class="logo-text">補助金検索</span>
             </h1>
-            <p class="subtitle">Jグランツ公開APIを使用した補助金情報検索システム</p>
+            <p class="subtitle">Jグランツ公開API + 補助金ポータルデータを使用した補助金情報検索システム</p>
         </div>
     </header>
 
@@ -46,6 +46,21 @@
                                 required
                                 minlength="2"
                             >
+                        </div>
+
+                        <!-- データソース選択 -->
+                        <div class="form-group form-group-full">
+                            <label class="form-label">検索対象データ</label>
+                            <div class="checkbox-row">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="search_jgrants" name="search_jgrants" class="form-checkbox" checked>
+                                    <span class="checkbox-text">Jグランツ（全国）</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="search_local" name="search_local" class="form-checkbox" checked>
+                                    <span class="checkbox-text">補助金ポータル（{{ local_data_count }}件）</span>
+                                </label>
+                            </div>
                         </div>
 
                         <div class="form-group">
@@ -79,7 +94,7 @@
                         </div>
 
                         <div class="form-group">
-                            <label for="sort" class="form-label">並び順</label>
+                            <label for="sort" class="form-label">並び順（Jグランツのみ）</label>
                             <select id="sort" name="sort" class="form-select">
                                 {% for value, label in sort_fields %}
                                 <option value="{{ value }}">{{ label }}</option>
@@ -88,7 +103,7 @@
                         </div>
 
                         <div class="form-group">
-                            <label for="order" class="form-label">ソート順</label>
+                            <label for="order" class="form-label">ソート順（Jグランツのみ）</label>
                             <select id="order" name="order" class="form-select">
                                 {% for value, label in sort_orders %}
                                 <option value="{{ value }}">{{ label }}</option>
@@ -155,7 +170,10 @@
     </div>
 
     <footer class="footer">
-        <p>データ出典: <a href="https://developers.digital.go.jp/documents/jgrants/api/" target="_blank" rel="noopener">デジタル庁 Jグランツ API</a></p>
+        <p>データ出典: 
+            <a href="https://developers.digital.go.jp/documents/jgrants/api/" target="_blank" rel="noopener">デジタル庁 Jグランツ API</a> / 
+            <a href="https://hojyokin-portal.jp/" target="_blank" rel="noopener">補助金ポータル</a>
+        </p>
     </footer>
 
     <script>
@@ -197,7 +215,7 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    displayResults(data.subsidies, data.count);
+                    displayResults(data.subsidies, data.count, data.api_count, data.local_count, data.api_error);
                 } else {
                     showError(data.error);
                 }
@@ -209,8 +227,17 @@
         });
 
         // 検索結果の表示
-        function displayResults(subsidies, count) {
-            resultCount.textContent = `${count}件の補助金が見つかりました`;
+        function displayResults(subsidies, count, apiCount, localCount, apiError) {
+            let countText = `${count}件の補助金が見つかりました`;
+            if (apiCount > 0 || localCount > 0) {
+                countText += ` (Jグランツ: ${apiCount}件, 補助金ポータル: ${localCount}件)`;
+            }
+            resultCount.innerHTML = countText;
+            
+            // APIエラーがあれば警告表示
+            if (apiError) {
+                resultCount.innerHTML += `<div class="api-warning">⚠️ Jグランツ API: ${apiError}</div>`;
+            }
 
             if (subsidies.length === 0) {
                 resultsContainer.innerHTML = `
@@ -226,10 +253,12 @@
             resultsContainer.innerHTML = subsidies.map((subsidy, index) => `
                 <div class="result-card" style="animation-delay: ${index * 0.05}s">
                     <div class="card-header">
-                        <span class="subsidy-id">${subsidy.name || '-'}</span>
-                        <span class="subsidy-amount">${subsidy.subsidy_max_limit}</span>
+                        <span class="subsidy-source ${subsidy.source === 'Jグランツ' ? 'source-jgrants' : 'source-portal'}">${subsidy.source || 'Jグランツ'}</span>
+                        <span class="subsidy-amount">${subsidy.subsidy_max_limit || '-'}</span>
                     </div>
+                    ${subsidy.status ? `<span class="subsidy-status ${subsidy.status === '公募中' ? 'status-active' : 'status-ended'}">${subsidy.status}</span>` : ''}
                     <h3 class="card-title">${subsidy.title || '名称未設定'}</h3>
+                    ${subsidy.description ? `<p class="card-description">${truncateText(subsidy.description, 100)}</p>` : ''}
                     <div class="card-meta">
                         <div class="meta-item">
                             <span class="meta-icon">📍</span>
@@ -240,6 +269,11 @@
                             <span>${subsidy.target_employees || '制限なし'}</span>
                         </div>
                     </div>
+                    ${subsidy.tags && subsidy.tags.length > 0 ? `
+                        <div class="card-tags">
+                            ${subsidy.tags.slice(0, 5).map(tag => `<span class="tag">${tag}</span>`).join('')}
+                        </div>
+                    ` : ''}
                     <div class="card-dates">
                         <span class="date-label">受付期間:</span>
                         <span>${formatDate(subsidy.acceptance_start)} ～ ${formatDate(subsidy.acceptance_end)}</span>
@@ -251,11 +285,23 @@
             `).join('');
         }
 
+        // テキストを省略
+        function truncateText(text, maxLength) {
+            if (!text) return '';
+            if (text.length <= maxLength) return text;
+            return text.substring(0, maxLength) + '...';
+        }
+
         // 日付のフォーマット
         function formatDate(dateStr) {
             if (!dateStr) return '-';
             try {
+                // 日本語形式の日付も対応
+                if (dateStr.includes('年')) {
+                    return dateStr;
+                }
                 const date = new Date(dateStr);
+                if (isNaN(date.getTime())) return dateStr;
                 return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}`;
             } catch {
                 return dateStr;
@@ -290,6 +336,8 @@
 
         // 詳細情報の表示
         function displayDetail(subsidy) {
+            const isLocal = subsidy.source === '補助金ポータル';
+            
             // ワークフロー（募集情報）の表示
             let workflowHtml = '';
             if (subsidy.workflow && subsidy.workflow.length > 0) {
@@ -313,9 +361,23 @@
                 `;
             }
 
+            // タグの表示
+            let tagsHtml = '';
+            if (subsidy.tags && subsidy.tags.length > 0) {
+                tagsHtml = `
+                    <div class="detail-section">
+                        <h3 class="detail-section-title">関連タグ</h3>
+                        <div class="detail-tags">
+                            ${subsidy.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
             modalBody.innerHTML = `
                 <div class="detail-header">
-                    <span class="detail-id">${subsidy.name || '-'}</span>
+                    <span class="detail-source ${isLocal ? 'source-portal' : 'source-jgrants'}">${subsidy.source || 'Jグランツ'}</span>
+                    ${subsidy.status ? `<span class="detail-status ${subsidy.status === '公募中' ? 'status-active' : 'status-ended'}">${subsidy.status}</span>` : ''}
                     <h2 class="detail-title">${subsidy.title || '名称未設定'}</h2>
                     ${subsidy.catch_phrase ? `<p class="detail-catchphrase">${subsidy.catch_phrase}</p>` : ''}
                 </div>
@@ -328,7 +390,7 @@
                 <div class="detail-grid">
                     <div class="detail-item">
                         <span class="detail-label">補助金上限</span>
-                        <span class="detail-value highlight">${subsidy.subsidy_max_limit}</span>
+                        <span class="detail-value highlight">${subsidy.subsidy_max_limit || '-'}</span>
                     </div>
                     <div class="detail-item">
                         <span class="detail-label">補助率</span>
@@ -346,18 +408,31 @@
                         <span class="detail-label">利用目的</span>
                         <span class="detail-value">${subsidy.use_purpose || '-'}</span>
                     </div>
+                    ${subsidy.application_period ? `
+                    <div class="detail-item">
+                        <span class="detail-label">申請期間</span>
+                        <span class="detail-value">${subsidy.application_period}</span>
+                    </div>
+                    ` : ''}
                 </div>
 
+                ${tagsHtml}
                 ${workflowHtml}
 
-                ${subsidy.detail_url ? `
-                    <div class="detail-actions">
+                <div class="detail-actions">
+                    ${subsidy.detail_url ? `
                         <a href="${subsidy.detail_url}" target="_blank" rel="noopener" class="btn btn-primary">
                             <span class="btn-icon">🔗</span>
-                            Jグランツで詳細を見る
+                            ${isLocal ? '補助金ポータルで詳細を見る' : 'Jグランツで詳細を見る'}
                         </a>
-                    </div>
-                ` : ''}
+                    ` : ''}
+                    ${subsidy.official_url ? `
+                        <a href="${subsidy.official_url}" target="_blank" rel="noopener" class="btn btn-secondary">
+                            <span class="btn-icon">🏢</span>
+                            公式サイト
+                        </a>
+                    ` : ''}
+                </div>
             `;
         }
 
@@ -379,4 +454,3 @@
     </script>
 </body>
 </html>
-

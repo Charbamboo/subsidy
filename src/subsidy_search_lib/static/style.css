@@ -811,3 +811,144 @@ body {
     }
 }
 
+/* =====================================================
+   データソース表示スタイル
+   ===================================================== */
+
+/* ソースバッジ */
+.subsidy-source,
+.detail-source {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    border-radius: var(--radius-full);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.source-jgrants {
+    background: linear-gradient(135deg, #4a90a4 0%, #2d6e83 100%);
+    color: white;
+}
+
+.source-portal {
+    background: linear-gradient(135deg, #e8a849 0%, #d18e2a 100%);
+    color: white;
+}
+
+/* ステータスバッジ */
+.subsidy-status,
+.detail-status {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    border-radius: var(--radius-full);
+    margin-left: 0.5rem;
+}
+
+.status-active {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.status-ended {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+/* カード説明文 */
+.card-description {
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    margin: 0.5rem 0;
+    line-height: 1.5;
+}
+
+/* タグ表示 */
+.card-tags,
+.detail-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin: 0.5rem 0;
+}
+
+.tag {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    font-size: 0.7rem;
+    background-color: #e8f4f8;
+    color: var(--color-primary);
+    border-radius: var(--radius-full);
+    border: 1px solid #c5dde6;
+}
+
+/* チェックボックス行 */
+.checkbox-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+/* API警告 */
+.api-warning {
+    margin-top: 0.5rem;
+    padding: 0.5rem 1rem;
+    background-color: #fff3cd;
+    color: #856404;
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+}
+
+/* 詳細ヘッダーにステータス追加 */
+.detail-header {
+    position: relative;
+}
+
+.detail-header .detail-source,
+.detail-header .detail-status {
+    margin-bottom: 0.5rem;
+}
+
+/* カードヘッダー改善 */
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+/* 詳細アクションボタン */
+.detail-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--color-border);
+}
+
+.detail-actions .btn {
+    flex: 1;
+    min-width: 200px;
+}
+
+@media (max-width: 768px) {
+    .checkbox-row {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    .detail-actions {
+        flex-direction: column;
+    }
+    
+    .detail-actions .btn {
+        width: 100%;
+    }
+}
+
