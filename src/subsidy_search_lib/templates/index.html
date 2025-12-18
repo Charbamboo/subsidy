@@ -33,14 +33,18 @@
                 
                 <form id="search-form" class="search-form">
                     <div class="form-grid">
-                        <div class="form-group">
-                            <label for="keyword" class="form-label">キーワード</label>
+                        <div class="form-group form-group-full">
+                            <label for="keyword" class="form-label">
+                                キーワード <span class="required">*必須（2文字以上）</span>
+                            </label>
                             <input 
                                 type="text" 
                                 id="keyword" 
                                 name="keyword" 
                                 class="form-input"
-                                placeholder="補助金名、詳細で検索..."
+                                placeholder="例: IT導入、小規模事業者、省エネ..."
+                                required
+                                minlength="2"
                             >
                         </div>
 
@@ -52,18 +56,6 @@
                                 <option value="{{ area }}">{{ area }}</option>
                                 {% endfor %}
                             </select>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="subsidy_max_limit" class="form-label">補助金上限額（円）</label>
-                            <input 
-                                type="number" 
-                                id="subsidy_max_limit" 
-                                name="subsidy_max_limit" 
-                                class="form-input"
-                                placeholder="例: 1000000"
-                                min="0"
-                            >
                         </div>
 
                         <div class="form-group">
@@ -86,10 +78,28 @@
                             </select>
                         </div>
 
+                        <div class="form-group">
+                            <label for="sort" class="form-label">並び順</label>
+                            <select id="sort" name="sort" class="form-select">
+                                {% for value, label in sort_fields %}
+                                <option value="{{ value }}">{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="order" class="form-label">ソート順</label>
+                            <select id="order" name="order" class="form-select">
+                                {% for value, label in sort_orders %}
+                                <option value="{{ value }}">{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
                         <div class="form-group checkbox-group">
                             <label class="checkbox-label">
-                                <input type="checkbox" id="acceptance_only" name="acceptance_only" class="form-checkbox">
-                                <span class="checkbox-text">受付中の補助金のみ表示</span>
+                                <input type="checkbox" id="acceptance_only" name="acceptance_only" class="form-checkbox" checked>
+                                <span class="checkbox-text">募集期間中の補助金のみ表示</span>
                             </label>
                         </div>
                     </div>
@@ -125,7 +135,13 @@
 
             <div id="error-message" class="error-message hidden"></div>
 
-            <div id="results-container" class="results-grid"></div>
+            <div id="results-container" class="results-grid">
+                <div class="initial-message">
+                    <span class="initial-icon">💡</span>
+                    <p>キーワードを入力して検索してください</p>
+                    <p class="initial-hint">例: IT導入、小規模事業者、省エネ など</p>
+                </div>
+            </div>
         </section>
     </main>
 
@@ -157,6 +173,12 @@
         // 検索フォームの送信処理
         searchForm.addEventListener('submit', async (e) => {
             e.preventDefault();
+            
+            const keyword = document.getElementById('keyword').value.trim();
+            if (keyword.length < 2) {
+                showError('キーワードは2文字以上で入力してください');
+                return;
+            }
             
             // UIの初期化
             loading.classList.remove('hidden');
@@ -195,7 +217,7 @@
                     <div class="no-results">
                         <span class="no-results-icon">🔍</span>
                         <p>条件に一致する補助金が見つかりませんでした。</p>
-                        <p class="no-results-hint">検索条件を変更してお試しください。</p>
+                        <p class="no-results-hint">キーワードや検索条件を変更してお試しください。</p>
                     </div>
                 `;
                 return;
@@ -268,6 +290,29 @@
 
         // 詳細情報の表示
         function displayDetail(subsidy) {
+            // ワークフロー（募集情報）の表示
+            let workflowHtml = '';
+            if (subsidy.workflow && subsidy.workflow.length > 0) {
+                workflowHtml = `
+                    <div class="detail-section">
+                        <h3 class="detail-section-title">募集情報</h3>
+                        <div class="workflow-list">
+                            ${subsidy.workflow.map(wf => `
+                                <div class="workflow-item">
+                                    <div class="workflow-header">
+                                        <span class="workflow-round">${wf.fiscal_year_round || '-'}</span>
+                                        <span class="workflow-area">${wf.target_area_search || '-'}</span>
+                                    </div>
+                                    <div class="workflow-dates">
+                                        <span>募集期間: ${formatDate(wf.acceptance_start_datetime)} ～ ${formatDate(wf.acceptance_end_datetime)}</span>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
             modalBody.innerHTML = `
                 <div class="detail-header">
                     <span class="detail-id">${subsidy.name || '-'}</span>
@@ -290,14 +335,6 @@
                         <span class="detail-value">${subsidy.subsidy_rate || '-'}</span>
                     </div>
                     <div class="detail-item">
-                        <span class="detail-label">対象地域</span>
-                        <span class="detail-value">${subsidy.target_area || '-'}</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">地域詳細</span>
-                        <span class="detail-value">${subsidy.target_area_detail || '-'}</span>
-                    </div>
-                    <div class="detail-item">
                         <span class="detail-label">対象従業員数</span>
                         <span class="detail-value">${subsidy.target_employees || '-'}</span>
                     </div>
@@ -309,19 +346,9 @@
                         <span class="detail-label">利用目的</span>
                         <span class="detail-value">${subsidy.use_purpose || '-'}</span>
                     </div>
-                    <div class="detail-item">
-                        <span class="detail-label">受付開始</span>
-                        <span class="detail-value">${formatDate(subsidy.acceptance_start)}</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">受付終了</span>
-                        <span class="detail-value">${formatDate(subsidy.acceptance_end)}</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">事業終了期限</span>
-                        <span class="detail-value">${formatDate(subsidy.project_end_deadline)}</span>
-                    </div>
                 </div>
+
+                ${workflowHtml}
 
                 ${subsidy.detail_url ? `
                     <div class="detail-actions">

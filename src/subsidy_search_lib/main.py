@@ -4,14 +4,15 @@ Flaskアプリケーションの定義と実行
 """
 
 from flask import Flask, render_template, request, jsonify
-from typing import Optional
 from .config import (
     FLASK_HOST,
     FLASK_PORT,
     FLASK_DEBUG,
     TARGET_AREAS,
     EMPLOYEE_COUNTS,
-    USE_PURPOSES
+    USE_PURPOSES,
+    SORT_FIELDS,
+    SORT_ORDERS
 )
 from .api_client import JGrantsApiClient, ApiClientError, format_subsidy_amount
 
@@ -40,7 +41,9 @@ def create_app() -> Flask:
             "index.html",
             target_areas=TARGET_AREAS,
             employee_counts=EMPLOYEE_COUNTS,
-            use_purposes=USE_PURPOSES
+            use_purposes=USE_PURPOSES,
+            sort_fields=SORT_FIELDS,
+            sort_orders=SORT_ORDERS
         )
 
     @app.route("/search", methods=["POST"])
@@ -50,32 +53,30 @@ def create_app() -> Flask:
         """
         try:
             # フォームデータの取得
-            keyword = request.form.get("keyword", "").strip() or None
+            keyword = request.form.get("keyword", "").strip()
+            sort = request.form.get("sort", "created_date").strip()
+            order = request.form.get("order", "DESC").strip()
+            acceptance = "1" if request.form.get("acceptance_only") == "on" else "0"
             target_area = request.form.get("target_area", "").strip() or None
-            subsidy_max_limit_str = request.form.get("subsidy_max_limit", "").strip()
             target_number_of_employees = request.form.get("target_number_of_employees", "").strip() or None
             use_purpose = request.form.get("use_purpose", "").strip() or None
-            acceptance_only = request.form.get("acceptance_only") == "on"
 
-            # 補助金上限額の変換
-            subsidy_max_limit: Optional[int] = None
-            if subsidy_max_limit_str:
-                try:
-                    subsidy_max_limit = int(subsidy_max_limit_str)
-                except ValueError:
-                    return jsonify({
-                        "success": False,
-                        "error": "補助金上限額は数値で入力してください"
-                    }), 400
+            # キーワードのバリデーション（2文字以上必須）
+            if not keyword or len(keyword) < 2:
+                return jsonify({
+                    "success": False,
+                    "error": "検索キーワードは2文字以上で入力してください"
+                }), 400
 
             # API呼び出し
             result = api_client.search_subsidies(
                 keyword=keyword,
+                sort=sort,
+                order=order,
+                acceptance=acceptance,
                 target_area=target_area,
-                subsidy_max_limit=subsidy_max_limit,
                 target_number_of_employees=target_number_of_employees,
-                use_purpose=use_purpose,
-                acceptance_status="accepting" if acceptance_only else None
+                use_purpose=use_purpose
             )
 
             # 結果のフォーマット
@@ -131,15 +132,11 @@ def create_app() -> Flask:
                     "detail": subsidy.get("detail", ""),
                     "use_purpose": subsidy.get("use_purpose", ""),
                     "industry": subsidy.get("industry", ""),
-                    "target_area": subsidy.get("target_area_search", ""),
-                    "target_area_detail": subsidy.get("target_area_detail", ""),
                     "target_employees": subsidy.get("target_number_of_employees", ""),
                     "subsidy_rate": subsidy.get("subsidy_rate", ""),
                     "subsidy_max_limit": format_subsidy_amount(subsidy.get("subsidy_max_limit")),
-                    "acceptance_start": subsidy.get("acceptance_start_datetime", ""),
-                    "acceptance_end": subsidy.get("acceptance_end_datetime", ""),
-                    "project_end_deadline": subsidy.get("project_end_deadline", ""),
-                    "detail_url": subsidy.get("front_subsidy_detail_page_url", "")
+                    "detail_url": subsidy.get("front_subsidy_detail_page_url", ""),
+                    "workflow": subsidy.get("workflow", [])
                 }
             })
 
@@ -153,20 +150,6 @@ def create_app() -> Flask:
                 "success": False,
                 "error": str(e)
             }), 500
-
-    @app.template_filter("format_datetime")
-    def format_datetime_filter(value: Optional[str]) -> str:
-        """
-        ISO 8601形式の日時を読みやすい形式に変換
-        """
-        if not value:
-            return "-"
-        try:
-            from datetime import datetime
-            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-            return dt.strftime("%Y年%m月%d日")
-        except (ValueError, AttributeError):
-            return value
 
     return app
 
