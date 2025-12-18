@@ -5,7 +5,7 @@ APIとの通信処理を担当
 
 import json
 import requests
-from typing import Dict, List, Optional, Any
+from typing import Dict, Optional, Any
 from .config import (
     JGRANTS_API_BASE_URL,
     JGRANTS_SUBSIDIES_ENDPOINT,
@@ -27,59 +27,80 @@ class JGrantsApiClient:
 
     def search_subsidies(
         self,
-        keyword: Optional[str] = None,
+        keyword: str,
+        sort: str = "created_date",
+        order: str = "DESC",
+        acceptance: str = "1",
         target_area: Optional[str] = None,
-        subsidy_max_limit: Optional[int] = None,
         target_number_of_employees: Optional[str] = None,
         use_purpose: Optional[str] = None,
-        acceptance_status: Optional[str] = None
+        industry: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         条件を指定して補助金一覧を検索
 
         Args:
-            keyword: キーワード検索（補助金名、詳細など）
+            keyword: 検索キーワード（必須、2文字以上）
+            sort: ソート項目（必須）
+                - created_date: 作成日時
+                - acceptance_start_datetime: 募集開始日時
+                - acceptance_end_datetime: 募集終了日時
+            order: ソート順（必須）
+                - ASC: 昇順
+                - DESC: 降順
+            acceptance: 募集期間内絞込（必須）
+                - "0": 否
+                - "1": 要
             target_area: 対象地域
-            subsidy_max_limit: 補助金上限額
             target_number_of_employees: 対象従業員数
             use_purpose: 利用目的
-            acceptance_status: 受付状況（accepting: 受付中）
+            industry: 業種
 
         Returns:
             Dict[str, Any]: API レスポンス（metadata と result を含む）
 
         Raises:
-            requests.RequestException: API通信エラー
+            ApiClientError: API通信エラー
         """
         url = f"{self.base_url}{JGRANTS_SUBSIDIES_ENDPOINT}"
 
-        # クエリパラメータの構築
-        params = {}
+        # 必須パラメータの構築
+        params = {
+            "keyword": keyword,
+            "sort": sort,
+            "order": order,
+            "acceptance": acceptance
+        }
 
-        if keyword:
-            params["keyword"] = keyword
+        # オプションパラメータの追加
         if target_area:
             params["target_area_search"] = target_area
-        if subsidy_max_limit is not None:
-            params["subsidy_max_limit"] = subsidy_max_limit
         if target_number_of_employees:
             params["target_number_of_employees"] = target_number_of_employees
         if use_purpose:
             params["use_purpose"] = use_purpose
-        if acceptance_status:
-            params["acceptance_status"] = acceptance_status
+        if industry:
+            params["industry"] = industry
 
         try:
-            # requestパラメータをJSON文字列として渡す
-            query_params = {"request": json.dumps(params)} if params else None
+            # パラメータを直接クエリパラメータとして渡す
             response = requests.get(
                 url,
-                params=query_params,
+                params=params,
                 timeout=self.timeout,
                 headers={"Accept": "application/json"}
             )
             response.raise_for_status()
             return response.json()
+        except requests.HTTPError as e:
+            # HTTPエラーの詳細を取得
+            error_detail = ""
+            try:
+                error_json = e.response.json()
+                error_detail = error_json.get("message", str(error_json))
+            except Exception:
+                error_detail = e.response.text[:200] if e.response.text else ""
+            raise ApiClientError(f"API通信エラー: {str(e)} - {error_detail}") from e
         except requests.RequestException as e:
             raise ApiClientError(f"API通信エラー: {str(e)}") from e
 
@@ -94,7 +115,7 @@ class JGrantsApiClient:
             Dict[str, Any]: 補助金詳細情報
 
         Raises:
-            requests.RequestException: API通信エラー
+            ApiClientError: API通信エラー
             ValueError: 補助金IDが不正な場合
         """
         if not subsidy_id or len(subsidy_id) > 18:
